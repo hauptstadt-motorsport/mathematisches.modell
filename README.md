@@ -1,2 +1,2 @@
 # mathematisches.modell
-Physics-based mathematical model for a STEM Racing mini car. Simulates acceleration, drag, friction, and CO₂ thrust to optimize performance and guide design decisions.
+Physikbasiertes mathematisches Modell für ein STEM Racing-Miniauto. Simuliert Beschleunigung, Luftwiderstand, Reibung und CO₂-Schub, um die Leistung zu optimieren und Designentscheidungen zu unterstützen.
