@@ -1,0 +1,98 @@
+(* === Constants and Distributions === *)
+g = 9.81; (* acceleration due to gravity, m/s² *)
+μStaticDist := RandomVariate[UniformDistribution[{0.5, 0.8}]];  (* Static friction coefficient range *)
+μKineticDist := RandomVariate[UniformDistribution[{0.3, 0.6}]]; (* Kinetic friction coefficient range *)
+massDist := RandomVariate[NormalDistribution[0.055, 0.001]]; (* mass of car in kg *)
+trackRoughnessDist := RandomVariate[UniformDistribution[{0.0, 0.1}]]; (* Track roughness (effect on friction) *)
+
+(* --- Parameters --- *)
+numTrials = 1000;
+dt = 0.001; (* Time step in seconds *)
+maxTime = 3.0; (* Max simulation time (seconds) *)
+
+(* Tire and Car Parameters *)
+tirePressure = 2.5; (* in bar *)
+tireDeformation = 0.02; (* Deformation factor (in %) on friction due to tire pressure *)
+
+(* Normal Force on the Car, adjusted for surface roughness *)
+normalForce[mass_] := mass * g;
+
+(* Model the frictional force for both static and kinetic conditions *)
+frictionForce[μ_, normal_] := μ * normal;
+
+(* Tire deformation model *)
+deformedFriction[μ_, deformation_] := μ * (1 - deformation); (* reduced friction due to tire deformation *)
+
+(* Calculate total resistance forces (drag + friction) and check for stability *)
+simulateRun[] := Module[
+  {mass, μStatic, μKinetic, trackRoughness, normal, friction, velocity = 0.0, displacement = 0.0, 
+   totalForce, acceleration, time = 0.0, frictionFailureTime, maxDisplacement = 0.0},
+  
+  (* Sample random values *)
+  mass = massDist;
+  μStatic = μStaticDist;
+  μKinetic = μKineticDist;
+  trackRoughness = trackRoughnessDist;
+  
+  normal = normalForce[mass]; (* Normal force calculation (car mass * gravity) *)
+  
+  (* Adjust friction with surface roughness and tire deformation *)
+  μEffective = deformedFriction[μStatic, tireDeformation + trackRoughness];
+  
+  (* Main simulation loop for frictional stability *)
+  While[time < maxTime && velocity >= 0.0,
+    (* Calculate forces *)
+    friction = frictionForce[μEffective, normal];
+    
+    (* Assume a small constant force applied for propulsion; friction is what resists motion *)
+    totalForce = 10.0 - friction; (* Arbitrary applied force value - can be adjusted for your model *)
+    
+    (* Check for friction failure: If total force is less than friction, the car stops *)
+    If[totalForce < friction, 
+      frictionFailureTime = time;
+      Break[];
+    ];
+    
+    (* Update car's velocity and displacement *)
+    acceleration = totalForce / mass;
+    velocity = velocity + acceleration * dt;
+    displacement = displacement + velocity * dt;
+    
+    (* Track maximum displacement *)
+    maxDisplacement = Max[maxDisplacement, displacement];
+    
+    (* Update time *)
+    time = time + dt;
+  ];
+
+  (* Return the results for each trial *)
+  <|
+    "FrictionFailureTime" -> If[exists(frictionFailureTime), frictionFailureTime, maxTime],
+    "MaxDisplacement" -> maxDisplacement,
+    "FinalVelocity" -> velocity,
+    "TotalTime" -> time
+  |>
+]
+
+(* Run Monte Carlo simulation *)
+results = Table[simulateRun[], {numTrials}];
+
+(* Extract key data *)
+failureTimes = results[[All, "FrictionFailureTime"]];
+maxDisplacements = results[[All, "MaxDisplacement"]];
+finalVelocities = results[[All, "FinalVelocity"]];
+times = results[[All, "TotalTime"]];
+
+(* Plot Histograms *)
+Histogram[failureTimes, 50, "Probability", PlotLabel -> "Friction Failure Time Distribution (s)"]
+Histogram[maxDisplacements, 50, "Probability", PlotLabel -> "Max Displacement Distribution (m)"]
+Histogram[finalVelocities, 50, "Probability", PlotLabel -> "Final Velocity Distribution (m/s)"]
+
+(* Summary Statistics *)
+{
+  "Average Failure Time (s)" -> Mean[failureTimes],
+  "Average Max Displacement (m)" -> Mean[maxDisplacements],
+  "Average Final Velocity (m/s)" -> Mean[finalVelocities],
+  "Max Displacement (m)" -> Max[maxDisplacements],
+  "Average Time to Stop (s)" -> Mean[failureTimes]
+}
