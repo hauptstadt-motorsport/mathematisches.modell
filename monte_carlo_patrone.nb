@@ -1,0 +1,72 @@
+(* === Physical Constants === *)
+γ = 1.3; (* Heat capacity ratio for CO2 *)
+R = 188.9; (* J/kg·K for CO2 *)
+T0Dist := RandomVariate[NormalDistribution[290, 5]]; (* K *)
+P0Dist := RandomVariate[NormalDistribution[6.0*10^6, 0.2*10^6]]; (* Pa *)
+rho0[P_, T_] := P/(R*T);
+
+A_nozzleDist := RandomVariate[NormalDistribution[3*10^-6, 0.5*10^-6]]; (* m² *)
+CdDist := RandomVariate[NormalDistribution[0.9, 0.05]];
+
+nTrials = 1000;
+dt = 0.0005; (* s *)
+maxT = 0.5;
+
+(* Choked flow mass flow rate (isentropic) *)
+massFlowRate[P0_, T0_, A_, Cd_] := Cd*A*P0*Sqrt[γ/(R*T0)]*
+  ((2/(γ + 1))^((γ + 1)/(2*(γ - 1))));
+
+(* Simulate one trial *)
+simulateCartridge[] := Module[
+  {
+    P0, T0, rho, A, Cd, thrustData = {}, t = 0.,
+    mDot, F, burnTime, peakThrust = 0., totalImpulse = 0.
+  },
+  
+  P0 = P0Dist;
+  T0 = T0Dist;
+  rho = rho0[P0, T0];
+  A = A_nozzleDist;
+  Cd = CdDist;
+  
+  While[t < maxT,
+    mDot = massFlowRate[P0, T0, A, Cd];
+    F = mDot*Sqrt(γ*R*T0); (* Approx thrust: ṁ * v_exit *)
+    
+    AppendTo[thrustData, {t, F}];
+    totalImpulse += F*dt;
+    peakThrust = Max[peakThrust, F];
+    
+    t += dt;
+    P0 *= 0.997; (* crude depletion model *)
+    T0 *= 0.999; (* cooling of gas during expansion *)
+  ];
+  
+  <|
+    "BurnTime" -> t,
+    "PeakThrust" -> peakThrust,
+    "TotalImpulse" -> totalImpulse,
+    "Curve" -> thrustData
+  |>
+]
+
+(* Run Monte Carlo trials *)
+results = Table[simulateCartridge[], {nTrials}];
+
+(* Extract key data *)
+burns = results[[All, "BurnTime"]];
+peaks = results[[All, "PeakThrust"]];
+impulses = results[[All, "TotalImpulse"]];
+
+(* Plots *)
+Histogram[impulses, 40, "Probability", PlotLabel -> "Total Impulse Distribution (N·s)"]
+Histogram[peaks, 40, "Probability", PlotLabel -> "Peak Thrust Distribution (N)"]
+Histogram[burns, 40, "Probability", PlotLabel -> "Burn Time Distribution (s)"]
+
+(* Summary stats *)
+{
+  "Avg Impulse (N·s)" -> Mean[impulses],
+  "Max Impulse" -> Max[impulses],
+  "Avg Peak Thrust (N)" -> Mean[peaks],
+  "Avg Burn Time (s)" -> Mean[burns]
+}
