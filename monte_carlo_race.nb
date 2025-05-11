@@ -1,0 +1,80 @@
+(* === Parameters === *)
+numTrials = 1000;
+trackLength = 20.0; (* meters *)
+
+(* Distribution definitions *)
+massDist := RandomVariate[NormalDistribution[0.055, 0.001]]
+dragCoeffDist := RandomVariate[NormalDistribution[0.32, 0.01]]
+frictionCoeffDist := RandomVariate[UniformDistribution[{0.01, 0.025}]]
+airDensityDist := RandomVariate[NormalDistribution[1.225, 0.02]]
+thrustScaleDist := RandomVariate[NormalDistribution[1.0, 0.05]]
+
+(* Time-dependent thrust function (in N) *)
+thrust[t_, scale_] := 
+  If[t < 0.1, 
+    scale*(12.0*Exp[-25*t] + 2.0), 
+    If[t < 0.25, scale*2.0*Exp[-8*(t - 0.1)], 0.0]
+  ];
+
+(* Single simulation run *)
+simulateRun[] := Module[
+  {
+    m, Cd, μ, ρ, scale, dt = 0.001, t = 0., x = 0., v = 0., a = 0., 
+    CdArea, results = {}
+  },
+  
+  (* Sample random parameters *)
+  m = massDist;
+  Cd = dragCoeffDist;
+  μ = frictionCoeffDist;
+  ρ = airDensityDist;
+  scale = thrustScaleDist;
+  CdArea = Cd * 0.002; (* Projected area fixed *)
+
+  (* Time stepping *)
+  While[x < trackLength && t < 3.0,
+    Module[
+      {
+        Fthrust, Fdrag, Ffriction, Fnet
+      },
+      
+      Fthrust = thrust[t, scale];
+      Fdrag = 0.5 * ρ * CdArea * v^2;
+      Ffriction = μ * m * 9.81;
+      Fnet = Fthrust - Fdrag - Ffriction;
+      a = Fnet / m;
+      v = Max[0., v + a*dt];
+      x = x + v*dt;
+      t = t + dt;
+    ]
+  ];
+  
+  <|
+    "Time" -> t,
+    "MaxVelocity" -> v,
+    "Mass" -> m,
+    "Drag" -> Cd,
+    "Friction" -> μ,
+    "AirDensity" -> ρ,
+    "ThrustScale" -> scale
+  |>
+]
+
+(* Run simulation *)
+results = Table[simulateRun[], {numTrials}];
+
+(* Extract data *)
+times = results[[All, "Time"]];
+velocities = results[[All, "MaxVelocity"]];
+
+(* Plot distributions *)
+Histogram[times, 40, "Probability", PlotLabel -> "Finish Time Distribution (s)"]
+Histogram[velocities, 40, "Probability", PlotLabel -> "Max Velocity Distribution (m/s)"]
+
+(* Statistical summary *)
+{
+  "Average Time" -> Mean[times],
+  "Std Dev Time" -> StandardDeviation[times],
+  "Fastest Time" -> Min[times],
+  "Slowest Time" -> Max[times]
+}
